@@ -1,0 +1,103 @@
+---
+title: "GITHUB_TOKEN"
+description: "Use the built-in GITHUB_TOKEN to authenticate pushes within the same repository."
+---
+
+GitHub Actions automatically provides a `GITHUB_TOKEN` secret in every workflow run. You do not need to create or store any credentials — GitHub generates and rotates this token for you.
+
+## How it works
+
+When a workflow starts, GitHub mints a short-lived `GITHUB_TOKEN` scoped to the repository that triggered the run. The push action uses this token to authenticate over HTTPS when pushing commits.
+
+Pass the token with the `github_token` input:
+
+```yaml
+- name: Push changes
+  uses: ad-m/github-push-action@master
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    branch: ${{ github.ref }}
+```
+
+<Note>
+`${{ github.token }}` and `${{ secrets.GITHUB_TOKEN }}` refer to the same token. Use whichever form you prefer — both are equivalent in a workflow file.
+</Note>
+
+If you omit `github_token` entirely, the action defaults to `${{ github.token }}` as defined in `action.yml`. Explicit is clearer, but both work.
+
+## Required permissions
+
+By default, the `GITHUB_TOKEN` has read-only access to repository contents. You must grant write access before the push action can push commits.
+
+Set the `contents: write` permission at the job level:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create local changes
+        run: |
+          # ... make your changes ...
+      - name: Commit files
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git commit -a -m "Add changes"
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+```
+
+You can also grant permissions globally for all jobs in the workflow:
+
+```yaml
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+```
+
+Alternatively, you can enable **Read and write permissions** for `GITHUB_TOKEN` in your repository settings:
+
+1. Navigate to your repository on GitHub.
+2. Click **Settings** in the repository toolbar.
+3. In the left sidebar, click **Actions**, then **General**.
+4. Scroll to **Workflow permissions**.
+5. Select **Read and write permissions**.
+6. Click **Save**.
+
+## What GITHUB_TOKEN can and cannot do
+
+| Capability | Supported |
+|---|---|
+| Push to non-protected branches in the same repository | Yes |
+| Push to protected branches | No |
+| Push to a different repository | No |
+| Trigger downstream `push`-event workflows (by default) | No |
+
+The token is scoped to the current repository only. If you need to push to a protected branch or a different repository, use a [Personal Access Token](/authentication/personal-access-token) instead.
+
+<Note>
+By default, commits pushed with `GITHUB_TOKEN` do not trigger new workflow runs on the target branch. This is a GitHub safety mechanism to prevent infinite loops. See the [GitHub documentation](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow) for ways to work around this if your use case requires it.
+</Note>
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Personal Access Token" icon="key" href="/authentication/personal-access-token">
+    Push to protected branches or a different repository.
+  </Card>
+  <Card title="GitHub App Token" icon="github" href="/authentication/github-app-token">
+    Generate short-lived tokens using a GitHub App.
+  </Card>
+</CardGroup>

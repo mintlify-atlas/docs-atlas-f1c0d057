@@ -1,0 +1,132 @@
+---
+title: "Tags and releases"
+description: "Push tags alongside commits or push only tags using the tags and push_only_tags inputs."
+---
+
+GitHub Push Action provides two inputs for working with git tags: `tags` pushes tags alongside your commits, and `push_only_tags` skips commits entirely and pushes only tags. This page explains both inputs and shows how to handle a common scenario — updating an existing tag.
+
+## The `tags` input
+
+Setting `tags: true` appends `--tags` to the `git push` command. This causes git to push all local tags that are not already present on the remote alongside the normal ref push.
+
+Use `tags: true` when your workflow creates a new tag (for example, a version tag derived from a build step) and you want it pushed in the same step as the associated commit.
+
+## The `push_only_tags` input
+
+Setting `push_only_tags: true` skips pushing any branch refs and pushes only tags. This is useful when a separate CI step handles committing and you only need to publish a tag after the fact.
+
+When `push_only_tags: true` is set, the `branch` ref is not included in the push command, so no branch update occurs.
+
+## Updating an existing tag
+
+By default, git will reject a push that would overwrite an existing tag on the remote. To update a tag — for example, to move a `latest` or version tag to a new commit — you must:
+
+1. Delete the tag locally.
+2. Re-create it pointing at the new commit.
+3. Push with `force: true` and `tags: true`.
+
+<Warning>
+  You cannot use `force_with_lease: true` to update a tag. The `--force-with-lease` flag does not apply to tag refs — the push will be rejected with a "stale info" error. Use `force: true` instead.
+</Warning>
+
+<Note>
+  When `force_with_lease: true` and `tags: true` are both set, the action automatically removes the `--atomic` flag from the push command. This is because `--atomic` and `--force-with-lease` are incompatible with `--tags` in some git versions. The action handles this automatically — you do not need to set `atomic: false` yourself.
+</Note>
+
+### Workflow example: update an existing tag
+
+```yaml
+name: Update release tag
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply changes and update tag
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Delete the existing tag locally and re-create it at HEAD
+          git tag -d $GITHUB_REF_NAME
+          git tag $GITHUB_REF_NAME
+
+          # Commit any file changes (required even if only re-tagging)
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: update release artifacts"
+
+      - name: Push changes and updated tag
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          force: true
+          tags: true
+```
+
+`$GITHUB_REF_NAME` is the short name of the ref that triggered the workflow (for example, `v1.2.3`). This workflow deletes the local copy of that tag, re-creates it pointing at the current `HEAD`, and then force-pushes both the branch and the tag to the remote.
+
+### Workflow example: push only tags
+
+```yaml
+name: Publish tags only
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tag-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create a version tag
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git tag v1.0.0
+
+      - name: Push tags only
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          push_only_tags: true
+          tags: true
+```
+
+## Key inputs used
+
+| Input | Value | Purpose |
+|---|---|---|
+| `tags` | `true` | Appends `--tags` to push all local tags |
+| `push_only_tags` | `true` | Pushes only tags, skips branch ref |
+| `force` | `true` | Required when overwriting an existing tag |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Force push" icon="arrow-up-from-bracket" href="/guides/force-push">
+    Understand when to use force versus force-with-lease.
+  </Card>
+  <Card title="Input reference" icon="sliders" href="/reference/inputs">
+    See all available inputs with defaults and descriptions.
+  </Card>
+</CardGroup>

@@ -1,0 +1,131 @@
+---
+title: "Basic push"
+description: "Push committed changes to a branch in your repository using the default GITHUB_TOKEN."
+---
+
+The most common use of GitHub Push Action is committing changes made during a workflow run — such as linter auto-fixes or generated files — and pushing them back to the same branch that triggered the workflow. This page shows how to do that using the built-in `GITHUB_TOKEN`.
+
+<Note>
+  The `GITHUB_TOKEN` must have write access to repository contents before this workflow will succeed. See the [permissions setup](/permissions) page for instructions on enabling it.
+</Note>
+
+## How it works
+
+The action constructs a `git push` command pointing at the remote repository URL, with the token embedded for authentication. When you pass `branch: ${{ github.ref }}`, it pushes to the same ref that triggered the workflow — typically a branch like `refs/heads/main`.
+
+## Step-by-step setup
+
+<Steps>
+  <Step title="Check out the repository">
+    Add `actions/checkout@v4` as the first step. Set `fetch-depth: 0` so that the full git history is available — without it, the push step may fail when resolving refs.
+
+    ```yaml
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Required to avoid "shallow update not allowed" errors
+    ```
+
+    <Note>
+      Omitting `fetch-depth: 0` (or leaving it at the default of `1`) creates a shallow clone. A shallow clone does not contain the full ref history that `git push` needs to resolve the destination branch correctly, which causes the push to fail.
+    </Note>
+  </Step>
+
+  <Step title="Make your changes">
+    Run the script, tool, or command that modifies files in the working directory.
+
+    ```yaml
+    - name: Apply changes
+      run: |
+        # Replace with your actual command, for example:
+        npm run lint --fix
+    ```
+  </Step>
+
+  <Step title="Commit the changes">
+    Configure a git identity for the commit and create it. Using the `github-actions[bot]` identity is the standard convention for machine-generated commits.
+
+    ```yaml
+    - name: Commit changes
+      run: |
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add -A
+        git diff --cached --quiet || git commit -m "chore: apply automated changes"
+    ```
+
+    The `git diff --cached --quiet || git commit` pattern skips the commit when there are no staged changes, preventing the push step from failing on a clean working tree.
+  </Step>
+
+  <Step title="Push with GitHub Push Action">
+    Add the push step. Pass `secrets.GITHUB_TOKEN` for authentication and `github.ref` to target the same branch that triggered the workflow.
+
+    ```yaml
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
+    ```
+  </Step>
+</Steps>
+
+## Complete workflow example
+
+Copy the following file into `.github/workflows/push-changes.yml` to get a working end-to-end example. It triggers on pushes to `main`, applies a placeholder command, and pushes any resulting changes back to `main`.
+
+```yaml
+name: Push automated changes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # Required so the GITHUB_TOKEN can push
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply changes
+        run: |
+          # Replace with your actual command
+          echo "$(date -u)" > last-run.txt
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: apply automated changes"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+```
+
+## Key inputs used
+
+| Input | Value | Purpose |
+|---|---|---|
+| `github_token` | `${{ secrets.GITHUB_TOKEN }}` | Authenticates the push |
+| `branch` | `${{ github.ref }}` | Targets the branch that triggered the workflow |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Force push" icon="arrow-up-from-bracket" href="/guides/force-push">
+    Overwrite remote history when a normal push is rejected.
+  </Card>
+  <Card title="SSH and deploy keys" icon="key" href="/guides/ssh-deploy-keys">
+    Authenticate with an SSH private key instead of a token.
+  </Card>
+</CardGroup>

@@ -1,0 +1,122 @@
+---
+title: "Push to another repository"
+description: "Push changes to a separate repository using a Personal Access Token."
+---
+
+GitHub Push Action can push to a repository other than the one running the workflow. This is useful for mirroring content, publishing generated artifacts to a dedicated repository, or synchronizing changes across multiple repos.
+
+Cross-repository pushes require a Personal Access Token (PAT). The built-in `GITHUB_TOKEN` is scoped to the repository that owns the workflow and cannot write to a different repository.
+
+<Warning>
+  `force_with_lease` is not supported for cross-repository pushes. If you need to force-push to the target repository, use `force: true` instead.
+</Warning>
+
+## Prerequisites
+
+You need a PAT with sufficient scope to write to the target repository:
+
+- **Classic token** — requires the `repo` scope for private repositories, or `public_repo` for public repositories.
+- **Fine-grained token** — requires **Contents** read and write access on the target repository.
+
+See the [personal access token guide](/authentication/personal-access-token) for step-by-step instructions on creating a PAT with the right permissions.
+
+## Step-by-step setup
+
+<Steps>
+  <Step title="Create a Personal Access Token">
+    Create a PAT with write access to the target repository. See [personal access token](/authentication/personal-access-token) for detailed instructions.
+  </Step>
+
+  <Step title="Add the token as a repository secret">
+    Navigate to the source repository on GitHub (the one running the workflow). Click **Settings** → **Secrets and variables** → **Actions**, then click **New repository secret**. Name it `PAT_TOKEN` and paste your token value.
+  </Step>
+
+  <Step title="Update the checkout step">
+    Pass the PAT as the `token:` parameter to `actions/checkout`. This ensures the local git configuration uses the PAT for all git operations, not just the push.
+
+    ```yaml
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.PAT_TOKEN }}
+        fetch-depth: 0
+    ```
+  </Step>
+
+  <Step title="Add the push step">
+    Set `repository:` to the target repository in `owner/repo` format and pass the PAT as `github_token:`.
+
+    ```yaml
+    - name: Push to target repository
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.PAT_TOKEN }}
+        repository: owner/other-repo
+        branch: main
+    ```
+  </Step>
+</Steps>
+
+## Complete workflow example
+
+The following workflow runs on pushes to `main` in the source repository, applies a change, and pushes the result to `owner/other-repo`.
+
+```yaml
+name: Mirror changes to another repository
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  cross-repo-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Apply changes
+        run: |
+          # Replace with your actual command
+          echo "$(date -u)" > last-sync.txt
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: sync automated changes"
+
+      - name: Push to target repository
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.PAT_TOKEN }}
+          repository: owner/other-repo
+          branch: main
+          force: true
+```
+
+`force: true` is used here because the target repository may have diverged, and `force_with_lease` is not available for cross-repository pushes.
+
+## Key inputs used
+
+| Input | Value | Purpose |
+|---|---|---|
+| `github_token` | `${{ secrets.PAT_TOKEN }}` | Authenticates with the target repository |
+| `repository` | `owner/other-repo` | Specifies the target repository |
+| `branch` | `main` | Targets a named branch on the remote |
+| `force` | `true` | Overwrites diverged history (use with care) |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Protected branches" icon="shield" href="/guides/protected-branches">
+    Push to a branch with protection rules using a PAT.
+  </Card>
+  <Card title="Personal access token" icon="key" href="/authentication/personal-access-token">
+    Create and configure a PAT with the right scopes.
+  </Card>
+</CardGroup>

@@ -1,0 +1,118 @@
+---
+title: "SSH and deploy keys"
+description: "Authenticate pushes using an SSH private key or repository deploy key instead of a token."
+---
+
+By default, GitHub Push Action authenticates over HTTPS using a token. You can switch to SSH authentication by providing an SSH private key in the checkout step and setting `ssh: true` in the push step. This is useful when your organization's policy restricts token usage, when you want to use a repository deploy key with narrowly scoped access, or when the `GITHUB_TOKEN` scope is not sufficient for your workflow.
+
+<Tip>
+  SSH deploy keys grant access to a single repository and do not carry the broad permissions of a personal access token. They are a good choice when you want to limit the blast radius of a compromised credential.
+</Tip>
+
+## How SSH authentication works
+
+When `ssh: true` is set, the action constructs the remote URL in `git@<host>:<owner>/<repo>.git` format instead of the HTTPS token URL. The SSH key loaded by `actions/checkout` (via `ssh-key:`) is used by the underlying git client to authenticate the push.
+
+The `github_token` input is still required by the action — it falls back to `${{ github.token }}` automatically if you do not set it explicitly. The token is not used for the SSH push itself, but the action checks that it is present before executing.
+
+## Step-by-step setup
+
+<Steps>
+  <Step title="Generate an SSH key pair">
+    On your local machine, generate a dedicated key pair for this workflow. Do not use your personal SSH key.
+
+    ```bash
+    ssh-keygen -t ed25519 -C "github-actions-push" -f deploy_key -N ""
+    ```
+
+    This produces two files: `deploy_key` (private key) and `deploy_key.pub` (public key).
+  </Step>
+
+  <Step title="Add the public key as a deploy key">
+    Navigate to your repository on GitHub. Click **Settings**, then click **Deploy keys** in the left sidebar. Click **Add deploy key**, paste the contents of `deploy_key.pub`, enable **Allow write access**, and click **Add key**.
+  </Step>
+
+  <Step title="Add the private key as a repository secret">
+    In the same **Settings** page, click **Secrets and variables** → **Actions**. Click **New repository secret**, name it `SSH_PRIVATE_KEY`, paste the full contents of the `deploy_key` file (including the `-----BEGIN` and `-----END` lines), and click **Add secret**.
+
+    Delete the local key files after storing them — you do not need them on your machine.
+  </Step>
+
+  <Step title="Update your workflow">
+    Pass `ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}` to `actions/checkout` and set `persist-credentials: true` so the SSH agent configuration persists to the push step. Then set `ssh: true` in the push action.
+
+    ```yaml
+    - uses: actions/checkout@v4
+      with:
+        ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        persist-credentials: true
+        fetch-depth: 0
+
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        ssh: true
+        branch: ${{ github.ref }}
+    ```
+  </Step>
+</Steps>
+
+## Complete workflow example
+
+```yaml
+name: Push via SSH deploy key
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ssh-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Apply changes
+        run: |
+          # Replace with your actual command
+          echo "$(date -u)" > last-run.txt
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: apply automated changes"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          ssh: true
+          branch: ${{ github.ref }}
+```
+
+Note that this workflow does not set `github_token` explicitly. The action automatically uses `${{ github.token }}` as its default. No `permissions: contents: write` block is required because the push is authenticated by the SSH key, not the `GITHUB_TOKEN`.
+
+## Key inputs used
+
+| Input | Value | Purpose |
+|---|---|---|
+| `ssh` | `true` | Switches the remote URL to SSH format |
+| `branch` | `${{ github.ref }}` | Targets the triggering branch |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Cross-repo push" icon="arrow-right-arrow-left" href="/guides/cross-repo-push">
+    Push to a separate repository using a Personal Access Token.
+  </Card>
+  <Card title="Protected branches" icon="shield" href="/guides/protected-branches">
+    Push to a branch with protection rules.
+  </Card>
+</CardGroup>

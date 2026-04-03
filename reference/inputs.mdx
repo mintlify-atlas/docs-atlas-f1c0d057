@@ -1,0 +1,259 @@
+---
+title: 'Input reference'
+description: 'Complete reference for all inputs accepted by the GitHub Push Action.'
+---
+
+## Summary
+
+| Input | Type | Default | Required |
+|---|---|---|---|
+| `github_token` | string | `${{ github.token }}` | No |
+| `github_url` | string | `${{ github.server_url }}` | No |
+| `ssh` | boolean | `false` | No |
+| `repository` | string | `''` (current repo) | No |
+| `branch` | string | Repository default branch | No |
+| `force` | boolean | `false` | No |
+| `force_with_lease` | boolean | `false` | No |
+| `atomic` | boolean | `true` | No |
+| `tags` | boolean | `false` | No |
+| `push_only_tags` | boolean | `false` | No |
+| `push_to_submodules` | string | `'on-demand'` | No |
+| `directory` | string | `'.'` | No |
+
+---
+
+## Authentication
+
+<ParamField query="github_token" type="string" default="${{ github.token }}">
+  The token used to authenticate push requests. Accepts the built-in `GITHUB_TOKEN` or a
+  [Personal Access Token (PAT)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)
+  with `repo` scope.
+
+  The default value (`${{ github.token }}`) resolves to the workflow's automatically generated
+  `GITHUB_TOKEN`. Use a PAT when you need to:
+
+  - Push to a **different repository** than the one running the workflow.
+  - Push to a **protected branch** that `GITHUB_TOKEN` cannot bypass.
+  - Authenticate as a specific user rather than as `github-actions[bot]`.
+
+  <Note>
+    The `GITHUB_TOKEN` must have **read and write** permissions for repository contents. You can
+    configure this under **Settings → Actions → General → Workflow permissions** in your repository,
+    or set `permissions: contents: write` in your workflow file.
+  </Note>
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      github_token: ${{ secrets.GITHUB_TOKEN }}
+  ```
+</ParamField>
+
+<ParamField query="github_url" type="string" default="${{ github.server_url }}">
+  The base URL of the GitHub instance to push to. Defaults to the server running the current
+  workflow, which is `https://github.com` for GitHub.com.
+
+  Set this to your GitHub Enterprise Server hostname when pushing to a self-hosted instance.
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      github_url: https://github.example.com
+  ```
+</ParamField>
+
+<ParamField query="ssh" type="boolean" default="false">
+  When `true`, the action uses an SSH remote URL (`git@<host>:<owner>/<repo>.git`) instead of
+  the default HTTPS URL with an OAuth2 token.
+
+  Use this input when you have configured a [Deploy Key](https://docs.github.com/en/developers/overview/managing-deploy-keys)
+  for your repository and checked out using `ssh-key` in `actions/checkout`.
+
+  ```yaml
+  - uses: actions/checkout@v4
+    with:
+      ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      persist-credentials: true
+
+  - uses: ad-m/github-push-action@master
+    with:
+      ssh: true
+  ```
+
+  <Tip>
+    When `ssh: true` is set, the action uses an SSH remote URL for the push — the `github_token`
+    is not embedded in the remote URL. However, the action still requires `github_token` to be
+    non-empty (it falls back to `${{ github.token }}` automatically if you omit it).
+  </Tip>
+</ParamField>
+
+---
+
+## Target
+
+<ParamField query="repository" type="string" default="''">
+  The target repository in `owner/repo` format. An empty string (the default) resolves to the
+  repository that triggered the current workflow (`$GITHUB_REPOSITORY`).
+
+  Set this when pushing to a **different repository** than the one running the workflow. You must
+  also supply a PAT with write access to that repository via `github_token`.
+
+  <Warning>
+    `force_with_lease` is not supported for cross-repository pushes. Use `force: true` instead
+    when you need to force-push to a different repository.
+  </Warning>
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      github_token: ${{ secrets.PAT_TOKEN }}
+      repository: my-org/other-repo
+  ```
+</ParamField>
+
+<ParamField query="branch" type="string">
+  The destination branch to push to. When left empty, the action queries the GitHub API to
+  determine the repository's default branch and pushes to that.
+
+  You can pass the current branch from context using `${{ github.ref }}` or
+  `${{ github.head_ref }}` (for pull request branches).
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      branch: ${{ github.ref }}
+  ```
+</ParamField>
+
+<ParamField query="directory" type="string" default=".">
+  The working directory the action changes into before running `git push`. Useful when the
+  repository you want to push is checked out into a subdirectory of your workspace.
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      directory: my-subdir
+  ```
+</ParamField>
+
+---
+
+## Push behavior
+
+<ParamField query="force" type="boolean" default="false">
+  When `true`, passes the `--force` flag to `git push`, overwriting the remote branch history
+  with the local one unconditionally.
+
+  Use `force: true` when you need to:
+
+  - Overwrite or move an existing tag.
+  - Force-push to a repository you do not have local tracking refs for (e.g., cross-repo pushes).
+
+  <Warning>
+    Force-pushing rewrites history. Never use `force: true` on a shared branch unless you are
+    certain no one else's work will be lost. Consider `force_with_lease` for a safer alternative
+    on non-tag refs.
+  </Warning>
+
+  You cannot set both `force` and `force_with_lease` to `true` at the same time — the action
+  will exit with an error.
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      force: true
+      tags: true   # required when overwriting a tag
+  ```
+</ParamField>
+
+<ParamField query="force_with_lease" type="boolean" default="false">
+  When `true`, passes `--force-with-lease` to `git push`. This is a safer form of force push
+  that succeeds only when the remote ref matches the local tracking ref — it prevents
+  overwriting commits you have not seen.
+
+  Set the matching `ref` in your `actions/checkout` step so that the local tracking ref is
+  populated correctly:
+
+  ```yaml
+  - uses: actions/checkout@v4
+    with:
+      ref: ${{ github.head_ref }}
+      fetch-depth: 0
+
+  - uses: ad-m/github-push-action@master
+    with:
+      force_with_lease: true
+  ```
+
+  <Warning>
+    `--force-with-lease` cannot update tags. If you need to overwrite an existing tag, use
+    `force: true` instead. See [Push rejected (stale info) when updating a tag](/reference/troubleshooting).
+  </Warning>
+
+  You cannot set both `force_with_lease` and `force` to `true` at the same time.
+</ParamField>
+
+<ParamField query="atomic" type="boolean" default="true">
+  When `true` (the default), passes `--atomic` to `git push`. Atomic pushes ensure that either
+  all refs are updated or none are — preventing partial updates when pushing multiple refs.
+
+  Set `atomic: false` if your Git server does not support atomic pushes, or when using
+  `force_with_lease` together with `tags` (the action disables `--atomic` automatically in
+  that combination).
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      atomic: false
+  ```
+</ParamField>
+
+<ParamField query="tags" type="boolean" default="false">
+  When `true`, passes `--tags` to `git push`, pushing all local tags that are not already
+  present on the remote.
+
+  Combined with `force: true`, this allows you to overwrite existing tags on the remote.
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      tags: true
+  ```
+</ParamField>
+
+<ParamField query="push_only_tags" type="boolean" default="false">
+  When `true`, pushes only tags and does not push the branch HEAD. This is useful when you want
+  to publish a release tag without altering the remote branch.
+
+  <Note>
+    `push_only_tags` takes effect only when `force_with_lease` is also `true`. When using
+    `force: true` or neither force option, the action always pushes `HEAD` to the target branch.
+  </Note>
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      tags: true
+      push_only_tags: true
+      force_with_lease: true
+  ```
+</ParamField>
+
+<ParamField query="push_to_submodules" type="string" default="on-demand">
+  Controls the `--recurse-submodules=<strategy>` flag passed to `git push`. The value you set
+  here is used directly as the strategy argument.
+
+  Common values:
+
+  | Value | Behaviour |
+  |---|---|
+  | `on-demand` (default) | Push each submodule that has commits needed by the superproject. |
+  | `check` | Verify that all submodule commits have been pushed, but do not push them. Fails if any are unpushed. |
+  | `no` | Disable submodule recursion entirely (equivalent to omitting the flag). |
+
+  ```yaml
+  - uses: ad-m/github-push-action@master
+    with:
+      push_to_submodules: check
+  ```
+</ParamField>

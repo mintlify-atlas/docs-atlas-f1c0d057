@@ -1,0 +1,90 @@
+---
+title: "Submodule push"
+description: "Recursively push changes to submodules using the push_to_submodules input."
+---
+
+When your repository contains git submodules, a normal push only updates the parent repository. If a submodule has local commits that have not been pushed to its remote, the parent repository will reference a commit that does not yet exist on the submodule's remote — breaking anyone who clones or fetches the parent.
+
+The `push_to_submodules` input passes `--recurse-submodules=<strategy>` to `git push`, letting git handle submodule pushes automatically as part of the same operation.
+
+## The `push_to_submodules` input
+
+`push_to_submodules` accepts a strategy string that maps directly to the `--recurse-submodules` option in git. The default value is `on-demand`.
+
+| Strategy | Behavior |
+|---|---|
+| `on-demand` | If a submodule has unpushed commits that the parent references, git automatically pushes the submodule before pushing the parent. If the submodule push fails, the parent push is also aborted. |
+| `check` | Git checks that all submodule commits referenced by the parent are already present on the submodule's remote. If any are missing, the push fails. No automatic push is attempted. |
+| `no` | Submodules are ignored entirely — only the parent repository is pushed. Equivalent to not setting this input. |
+
+<Note>
+  With `on-demand`, git only pushes submodule commits that the parent repository actually references. If a submodule has additional unpushed commits that are not referenced by the parent, those commits are not pushed. Only the specific commits needed to satisfy the parent's references are pushed automatically.
+</Note>
+
+## Complete workflow example
+
+```yaml
+name: Push with submodules
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  push-submodules:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive # Check out all submodules
+
+      - name: Apply changes
+        run: |
+          # Replace with your actual command
+          echo "$(date -u)" > last-run.txt
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: apply automated changes"
+
+      - name: Push changes including submodules
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+          push_to_submodules: on-demand
+```
+
+The `submodules: recursive` parameter in `actions/checkout` ensures that all submodules are initialized and checked out before the workflow makes changes. Without it, submodule directories will be empty and any commits referencing them will be invalid.
+
+## Choosing a strategy
+
+- Use `on-demand` when you want the push to succeed even if submodule commits have not been separately pushed. This is the most convenient option for automated workflows.
+- Use `check` when you want to enforce that all referenced submodule commits are already published before the parent is updated. This is a stricter option suited to release workflows where submodule state is managed separately.
+- Use `no` (or omit the input) when your workflow does not modify submodules and you only need to push the parent repository.
+
+## Key inputs used
+
+| Input | Value | Purpose |
+|---|---|---|
+| `push_to_submodules` | `on-demand` | Passes `--recurse-submodules=on-demand` to git push |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Basic push" icon="upload" href="/guides/basic-push">
+    Push committed changes using the default GITHUB_TOKEN.
+  </Card>
+  <Card title="Input reference" icon="sliders" href="/reference/inputs">
+    See all available inputs with defaults and descriptions.
+  </Card>
+</CardGroup>

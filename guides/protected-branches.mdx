@@ -1,0 +1,117 @@
+---
+title: "Push to protected branches"
+description: "Push to a branch with protection rules using a Personal Access Token."
+---
+
+Branch protection rules prevent direct pushes, enforce status checks, and require pull request reviews. The built-in `GITHUB_TOKEN` cannot bypass these rules — it is subject to all configured restrictions just like any other actor.
+
+To push to a protected branch from a workflow, you must use a Personal Access Token (PAT) that belongs to a user with bypass permissions on that branch, and supply that token to both the checkout step and the push step.
+
+<Note>
+  To create a PAT with the appropriate scopes, follow the instructions on the [personal access token](/authentication/personal-access-token) page.
+</Note>
+
+## Why GITHUB_TOKEN cannot bypass protection rules
+
+Branch protection rules apply to all pushes, including those made by the `GITHUB_TOKEN`. Even with `contents: write` permission granted to the workflow, a push to a protected branch will be rejected if the rules require a review, a passing status check, or a linear history.
+
+A PAT belonging to a repository admin or an account explicitly added to the bypass list can push to a protected branch provided the token has write access to the repository contents.
+
+## Step-by-step setup
+
+<Steps>
+  <Step title="Create a Personal Access Token">
+    Create a PAT for an account that has bypass permissions on the protected branch. At minimum, the token needs:
+
+    - **Classic token** — `repo` scope (full repository access)
+    - **Fine-grained token** — **Contents** read and write on the repository
+
+    See [personal access token](/authentication/personal-access-token) for detailed instructions.
+  </Step>
+
+  <Step title="Add the token as a repository secret">
+    In the repository that runs the workflow, click **Settings** → **Secrets and variables** → **Actions**, then click **New repository secret**. Name it `PAT_TOKEN` and paste your token value.
+  </Step>
+
+  <Step title="Pass the PAT to the checkout step">
+    Set `token: ${{ secrets.PAT_TOKEN }}` in `actions/checkout`. This configures the local git remote to use the PAT for authentication, which is required for the push step to succeed against a protected branch.
+
+    ```yaml
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.head_ref }}
+        fetch-depth: 0
+        token: ${{ secrets.PAT_TOKEN }}
+    ```
+  </Step>
+
+  <Step title="Pass the PAT to the push step">
+    Supply the same PAT as `github_token:` in the push action. Using `force_with_lease: true` is recommended — it prevents the push from overwriting commits pushed by another actor between your last fetch and the push.
+
+    ```yaml
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.PAT_TOKEN }}
+        force_with_lease: true
+    ```
+  </Step>
+</Steps>
+
+## Complete workflow example
+
+```yaml
+name: Push to protected branch
+
+on:
+  pull_request:
+
+jobs:
+  push-protected:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Apply changes
+        run: |
+          # Replace with your actual command
+          npm run lint --fix
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: apply automated fixes"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.PAT_TOKEN }}
+          force_with_lease: true
+```
+
+`force_with_lease: true` is used here as a safety net: if another commit was pushed to the PR branch between the checkout and the push, the action will fail rather than silently overwrite it. This is the recommended default for pull request workflows.
+
+## Key inputs used
+
+| Input | Value | Purpose |
+|---|---|---|
+| `github_token` | `${{ secrets.PAT_TOKEN }}` | Authenticates the push with bypass permissions |
+| `force_with_lease` | `true` | Prevents overwriting concurrent pushes |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Personal access token" icon="key" href="/authentication/personal-access-token">
+    Create and configure a PAT with the right scopes.
+  </Card>
+  <Card title="Force push" icon="arrow-up-from-bracket" href="/guides/force-push">
+    Understand the difference between force and force-with-lease.
+  </Card>
+</CardGroup>

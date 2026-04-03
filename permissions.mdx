@@ -1,0 +1,121 @@
+---
+title: "Permissions setup"
+description: "Configure GITHUB_TOKEN permissions so the action can push changes to your repository."
+---
+
+By default, the `GITHUB_TOKEN` is issued with read-only access to repository contents. To allow `ad-m/github-push-action` to push commits, you must explicitly grant write access. There are two ways to do this: through the repository settings UI, or by declaring a `permissions` key in your workflow file.
+
+<Warning>
+  Granting write permissions allows any workflow with that configuration to modify repository contents, including adding, updating, or deleting files and code. Only enable write permissions for workflows you trust and control.
+</Warning>
+
+## Option 1: Repository settings UI
+
+This approach sets the default token permission for every workflow in the repository. Use it when you want all workflows to have write access without modifying each workflow file individually.
+
+<Steps>
+  <Step title="Open repository settings">
+    Navigate to your repository on GitHub and click **Settings** in the top navigation bar.
+  </Step>
+
+  <Step title="Go to Actions settings">
+    In the left sidebar, click **Actions**, then click **General**.
+  </Step>
+
+  <Step title="Set workflow permissions">
+    Scroll down to the **Workflow permissions** section. Select **Read and write permissions**, then click **Save**.
+
+    With this setting, the `GITHUB_TOKEN` issued to every workflow in this repository will have write access to contents by default.
+  </Step>
+</Steps>
+
+## Option 2: Workflow-level `permissions` key
+
+The `permissions` key in your workflow file grants or restricts token scopes without changing the repository default. This is the recommended approach because it makes permissions explicit and scoped to exactly the workflows that need them.
+
+<Note>
+  The `permissions` key overrides the default `GITHUB_TOKEN` scope for the workflow or job it is applied to. Any scope you do not list is implicitly set to `none`.
+</Note>
+
+You can set permissions at the job level or at the workflow level.
+
+<Tabs>
+  <Tab title="Job level">
+    Apply `permissions` to a single job. Only that job receives elevated access — other jobs in the same workflow are unaffected.
+
+    ```yaml
+    jobs:
+      update:
+        runs-on: ubuntu-latest
+
+        permissions:
+          contents: write # Allow this job to push to the repository
+
+        steps:
+          - uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+
+          - name: Push changes
+            uses: ad-m/github-push-action@master
+            with:
+              github_token: ${{ secrets.GITHUB_TOKEN }}
+              branch: ${{ github.ref }}
+    ```
+
+    Job-level permissions are the most restrictive and auditable option. Prefer this unless you have multiple jobs that all require write access.
+  </Tab>
+
+  <Tab title="Workflow level">
+    Apply `permissions` at the top of the workflow file, outside of any job. Every job in the workflow inherits these permissions.
+
+    ```yaml
+    name: Push automated changes
+
+    on:
+      push:
+        branches:
+          - main
+
+    permissions:
+      contents: write # All jobs in this workflow can push to the repository
+
+    jobs:
+      update:
+        runs-on: ubuntu-latest
+
+        steps:
+          - uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+
+          - name: Push changes
+            uses: ad-m/github-push-action@master
+            with:
+              github_token: ${{ secrets.GITHUB_TOKEN }}
+              branch: ${{ github.ref }}
+    ```
+
+    Use workflow-level permissions when every job in the file requires the same access and you want to avoid repeating the `permissions` block.
+  </Tab>
+</Tabs>
+
+## Which option should you choose?
+
+| Scenario | Recommended approach |
+|---|---|
+| Only one or two specific workflows need write access | Workflow-level or job-level `permissions` key |
+| All workflows in the repository require write access | Repository settings UI |
+| You want the tightest possible scope | Job-level `permissions` key |
+| You are working in an organization with a strict security policy | Job-level `permissions` key — avoids relying on repository defaults |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Return to the quick start and add the action to your workflow.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication/github-token">
+    Learn when to use GITHUB_TOKEN versus a Personal Access Token or GitHub App token.
+  </Card>
+</CardGroup>

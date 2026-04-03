@@ -1,0 +1,78 @@
+{
+  "projectType": "general",
+  "projectName": "GitHub Push Action",
+  "projectDescription": "A GitHub Action that pushes local repository changes back to GitHub using an authorized token or SSH, supporting force push, branch targeting, submodules, and cross-repository pushes.",
+  "theme": "aspen",
+  "primaryColor": "#663ebc",
+  "lightColor": "#b49cdc",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "permissions"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-push",
+              "guides/force-push",
+              "guides/ssh-deploy-keys",
+              "guides/cross-repo-push",
+              "guides/protected-branches",
+              "guides/tags-and-releases",
+              "guides/submodules"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "authentication/github-token",
+              "authentication/personal-access-token",
+              "authentication/github-app-token"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/inputs",
+              "reference/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Push local commits to any branch in the same or different repository",
+    "Supports GITHUB_TOKEN and Personal Access Token (PAT) authentication",
+    "SSH and Deploy Key authentication support",
+    "Force push and force-with-lease push options",
+    "Atomic push support for safe concurrent operations",
+    "Submodule push with configurable recursion strategy",
+    "Tag-only push mode for release workflows",
+    "GitHub Enterprise Server (GHES) support via github_url input",
+    "Automatic default branch detection via GitHub API"
+  ],
+  "publicApiSurface": [
+    "input: github_token",
+    "input: github_url",
+    "input: ssh",
+    "input: repository",
+    "input: branch",
+    "input: force",
+    "input: force_with_lease",
+    "input: atomic",
+    "input: push_to_submodules",
+    "input: tags",
+    "input: push_only_tags",
+    "input: directory"
+  ]
+}

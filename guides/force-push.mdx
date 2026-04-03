@@ -1,0 +1,146 @@
+---
+title: "Force push"
+description: "Overwrite remote history using force or force-with-lease push strategies."
+---
+
+Sometimes a normal push is rejected because the remote branch has diverged from your local branch. GitHub Push Action supports two force push strategies — `force` and `force_with_lease` — each with different safety guarantees.
+
+<Warning>
+  You cannot set both `force: true` and `force_with_lease: true` in the same step. The action will exit with an error: `Please, specify only force or force_with_lease and not both.`
+</Warning>
+
+## `force` vs `force_with_lease`
+
+| | `force: true` | `force_with_lease: true` |
+|---|---|---|
+| Git flag | `--force` | `--force-with-lease` |
+| Overwrites remote if diverged | Yes, unconditionally | Only if remote matches your last-known state |
+| Safe against concurrent pushes | No | Yes |
+| Works across repositories | Yes | No |
+| Works for updating tags | Yes | No |
+
+### When to use `force`
+
+Use `force: true` when you need to overwrite the remote branch unconditionally — for example, when resetting a branch to a known-good state, updating a tag, or pushing to a repository where you know no other party is writing concurrently.
+
+### When to use `force_with_lease`
+
+Use `force_with_lease: true` when you want the push to succeed only if no one else has pushed to the remote branch since your last fetch. This prevents accidentally overwriting commits pushed by another actor — a common risk in pull request workflows where the base branch may have been updated.
+
+`force_with_lease` requires that the `checkout` step fetches the specific branch you intend to push to. Set the `ref:` parameter in `actions/checkout` to the branch name (for example, `ref: ${{ github.head_ref }}`). Without this, git does not have the reference state needed to evaluate the lease.
+
+<Warning>
+  `force_with_lease` is not supported when pushing to a different repository (`repository` input set to a repo other than the current one). Use `force: true` for cross-repository pushes instead.
+</Warning>
+
+## Examples
+
+<Tabs>
+  <Tab title="force">
+    Use `force: true` for unconditional overwrites — resetting branches, updating tags, or pushing to repositories where concurrent writes are not a concern.
+
+    ```yaml
+    name: Force push
+
+    on:
+      push:
+        branches:
+          - main
+
+    jobs:
+      force-push:
+        runs-on: ubuntu-latest
+
+        permissions:
+          contents: write
+
+        steps:
+          - uses: actions/checkout@v4
+            with:
+              fetch-depth: 0
+
+          - name: Make changes
+            run: |
+              echo "$(date -u)" > timestamp.txt
+
+          - name: Commit changes
+            run: |
+              git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git config --local user.name "github-actions[bot]"
+              git add -A
+              git diff --cached --quiet || git commit -m "chore: automated update"
+
+          - name: Push changes (force)
+            uses: ad-m/github-push-action@master
+            with:
+              github_token: ${{ secrets.GITHUB_TOKEN }}
+              branch: ${{ github.ref }}
+              force: true
+    ```
+  </Tab>
+
+  <Tab title="force_with_lease">
+    Use `force_with_lease: true` for safer overwrites in pull request workflows. Note the `ref: ${{ github.head_ref }}` in the checkout step — this is required so git can evaluate the lease against the correct reference.
+
+    ```yaml
+    name: Force push with lease
+
+    on:
+      pull_request:
+
+    jobs:
+      force-push-lease:
+        runs-on: ubuntu-latest
+
+        permissions:
+          contents: write
+
+        steps:
+          - uses: actions/checkout@v4
+            with:
+              ref: ${{ github.head_ref }}
+              fetch-depth: 0
+
+          - name: Make changes
+            run: |
+              echo "$(date -u)" > timestamp.txt
+
+          - name: Commit changes
+            run: |
+              git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git config --local user.name "github-actions[bot]"
+              git add -A
+              git diff --cached --quiet || git commit -m "chore: automated update"
+
+          - name: Push changes (force-with-lease)
+            uses: ad-m/github-push-action@master
+            with:
+              github_token: ${{ secrets.GITHUB_TOKEN }}
+              force_with_lease: true
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+### Updating a tag fails with "stale info"
+
+If you see output like the following when trying to update an existing tag:
+
+```
+! [rejected]        0.0.9 -> 0.0.9 (stale info)
+error: failed to push some refs to 'https://github.com/owner/repo'
+```
+
+This happens because `--force-with-lease` does not support updating tags — git cannot evaluate the lease on a tag ref the same way it does for a branch. Switch to `force: true` for tag update workflows. See the [tags and releases guide](/guides/tags-and-releases) for a complete example.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Tags and releases" icon="tag" href="/guides/tags-and-releases">
+    Push tags alongside commits or update an existing tag with force.
+  </Card>
+  <Card title="Cross-repo push" icon="arrow-right-arrow-left" href="/guides/cross-repo-push">
+    Push to a separate repository using a Personal Access Token.
+  </Card>
+</CardGroup>

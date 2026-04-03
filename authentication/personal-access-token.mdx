@@ -1,0 +1,138 @@
+---
+title: "Personal Access Token"
+description: "Use a Personal Access Token (PAT) to push to protected branches or a different repository."
+---
+
+A Personal Access Token (PAT) lets you push in situations where `GITHUB_TOKEN` is not sufficient:
+
+- **Protected branches** — `GITHUB_TOKEN` cannot bypass branch protection rules. A PAT owned by a user (or bot account) with the right permissions can.
+- **Cross-repository pushes** — `GITHUB_TOKEN` is scoped to the triggering repository. To push to a different repository, you need a PAT with access to the target.
+
+<Warning>
+Store your PAT as a repository secret. Never hardcode a token directly in a workflow file — it will be exposed in your repository history.
+</Warning>
+
+## Token types and required scopes
+
+GitHub offers two PAT formats. Use fine-grained tokens where possible.
+
+<Tabs>
+  <Tab title="Fine-grained token (recommended)">
+    Fine-grained tokens are scoped to specific repositories and use explicit permission grants instead of broad scopes.
+
+    **Minimum required permissions:**
+
+    | Permission | Level |
+    |---|---|
+    | Contents | Read and write |
+    | Metadata | Read-only |
+    | Actions | Read-only |
+
+    If you need to push changes to workflow files (`.github/workflows/`), also add:
+
+    | Permission | Level |
+    |---|---|
+    | Workflows | Read and write |
+
+    <Tip>
+    Fine-grained tokens restrict access to only the repositories and permissions you specify. Prefer them over classic tokens to follow the principle of least privilege.
+    </Tip>
+  </Tab>
+  <Tab title="Classic token">
+    Classic tokens use broad OAuth-style scopes that apply across all repositories your account can access.
+
+    **Minimum required scopes:**
+
+    | Use case | Required scope |
+    |---|---|
+    | Private repositories | `repo` |
+    | Public repositories only | `public_repo` |
+    | Updating workflow files | Also add `workflow` |
+  </Tab>
+</Tabs>
+
+## Create a PAT and add it to your repository
+
+<Steps>
+  <Step title="Generate a new token">
+    Go to [https://github.com/settings/tokens](https://github.com/settings/tokens) and click **Generate new token**. Choose **Fine-grained token** or **Token (classic)** depending on your preference.
+
+    Configure the scopes or permissions as described in the table above, then click **Generate token**. Copy the token value — you will not be able to see it again.
+  </Step>
+  <Step title="Add the token as a repository secret">
+    Navigate to your repository on GitHub.
+
+    1. Click **Settings** in the repository toolbar.
+    2. In the left sidebar, click **Secrets and variables**, then **Actions**.
+    3. Click **New repository secret**.
+    4. Set the name to `PAT_TOKEN` (or any name you prefer).
+    5. Paste your token into the **Secret** field.
+    6. Click **Add secret**.
+  </Step>
+  <Step title="Update your workflow">
+    Pass the PAT to both the checkout action and the push action. The checkout action needs the token so that the cloned remote URL is already authenticated with your PAT credentials:
+
+    ```yaml
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+            with:
+              ref: ${{ github.head_ref }}
+              fetch-depth: 0
+              token: ${{ secrets.PAT_TOKEN }}
+          - name: Commit files
+            run: |
+              git config --local user.email "test@test.com"
+              git config --local user.name "Test"
+              git commit -a -m "Add changes"
+          - name: Push changes
+            uses: ad-m/github-push-action@master
+            with:
+              github_token: ${{ secrets.PAT_TOKEN }}
+              branch: ${{ github.ref }}
+    ```
+  </Step>
+</Steps>
+
+## Pushing to a protected branch
+
+Pass `force_with_lease: true` when you need to push to a protected branch to handle any sync issues cleanly:
+
+```yaml
+- name: Push changes
+  uses: ad-m/github-push-action@master
+  with:
+    github_token: ${{ secrets.PAT_TOKEN }}
+    force_with_lease: true
+```
+
+## Pushing to a different repository
+
+Set the `repository` input to the target repo in `owner/repo` format. Note that `force_with_lease` is not supported for cross-repository pushes — use `force` instead if needed:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    ref: ${{ github.head_ref }}
+    fetch-depth: 0
+    token: ${{ secrets.PAT_TOKEN }}
+- name: Push changes
+  uses: ad-m/github-push-action@master
+  with:
+    github_token: ${{ secrets.PAT_TOKEN }}
+    repository: owner/target-repo
+    force: true
+```
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="GITHUB_TOKEN" icon="shield" href="/authentication/github-token">
+    Use the built-in token for same-repository pushes.
+  </Card>
+  <Card title="GitHub App Token" icon="github" href="/authentication/github-app-token">
+    Generate short-lived tokens using a GitHub App.
+  </Card>
+</CardGroup>

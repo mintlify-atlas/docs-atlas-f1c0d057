@@ -1,0 +1,268 @@
+---
+title: 'Troubleshooting'
+description: 'Diagnose and fix common errors when using GitHub Push Action.'
+---
+
+Use this page to identify the root cause of a failing push step and apply the right fix.
+Each section below matches a specific error message or scenario you may encounter.
+
+<AccordionGroup>
+
+  <Accordion title="! [rejected] 0.0.9 -> 0.0.9 (stale info)">
+    **Problem**
+
+    The push step fails with output similar to:
+
+    ```text
+    To https://github.com/Test/test_repository
+     ! [rejected]        0.0.9 -> 0.0.9 (stale info)
+    error: failed to push some refs to 'https://github.com/Test/test_repository'
+    ```
+
+    **Cause**
+
+    You are trying to overwrite an existing tag using `force_with_lease: true`.
+    Git's `--force-with-lease` flag works by checking whether the remote ref matches the local
+    tracking ref. Tags are not automatically fetched into tracking refs the same way branches
+    are, so the lease check always fails for tag updates — even if you intend to overwrite your
+    own tag.
+
+    **Fix**
+
+    Replace `force_with_lease: true` with `force: true` for any workflow that updates an
+    existing tag:
+
+    ```yaml
+    - uses: ad-m/github-push-action@master
+      with:
+        force: true   # use force, not force_with_lease, when overwriting a tag
+        tags: true
+    ```
+
+    <Warning>
+      Do not use `force_with_lease` when moving or overwriting tags. This limitation is
+      inherent to how `--force-with-lease` works in Git and is not specific to this action.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Missing input 'github_token: ${{ secrets.GITHUB_TOKEN }}'.">
+    **Problem**
+
+    The action exits immediately with:
+
+    ```text
+    Missing input 'github_token: ${{ secrets.GITHUB_TOKEN }}'.
+    ```
+
+    **Cause**
+
+    The `github_token` input was not set and the default expression `${{ github.token }}`
+    could not be resolved — typically because the environment variable `INPUT_GITHUB_TOKEN`
+    is empty at runtime.
+
+    **Fix**
+
+    Explicitly pass the token in your workflow step:
+
+    ```yaml
+    - uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    ```
+
+    If you are pushing to a different repository or to a protected branch, use a PAT stored
+    as a repository secret instead:
+
+    ```yaml
+    - uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.PAT_TOKEN }}
+    ```
+
+    <Note>
+      Make sure the token has **read and write** access to repository contents. You can verify
+      or update this under **Settings → Actions → General → Workflow permissions** in your
+      repository, or by granting `contents: write` permission at the job level in your
+      workflow file.
+    </Note>
+  </Accordion>
+
+  <Accordion title="error: failed to push some refs to ... (fetch-depth)">
+    **Problem**
+
+    The push step fails with:
+
+    ```text
+    error: failed to push some refs to 'https://github.com/...'
+    ```
+
+    There is no rejected ref message — the push simply cannot complete.
+
+    **Cause**
+
+    The `actions/checkout` step used the default `fetch-depth: 1`, which performs a shallow
+    clone. A shallow clone does not contain the full commit history, so `git push` cannot
+    determine the correct set of commits to send and fails.
+
+    **Fix**
+
+    Set `fetch-depth: 0` in your `actions/checkout` step to fetch the complete history:
+
+    ```yaml
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0   # fetch full history so git push can determine what to send
+    ```
+
+    Your full workflow should look similar to this:
+
+    ```yaml
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    - name: Commit files
+      run: |
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git commit -a -m "Add changes"
+
+    - uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
+    ```
+  </Accordion>
+
+  <Accordion title="Please, specify only force or force_with_lease and not both.">
+    **Problem**
+
+    The action exits with:
+
+    ```text
+    Please, specify only force or force_with_lease and not both.
+    ```
+
+    **Cause**
+
+    Both `force: true` and `force_with_lease: true` are set in the same step. These flags are
+    mutually exclusive — they map to `--force` and `--force-with-lease` in Git, which cannot
+    be used together.
+
+    **Fix**
+
+    Choose exactly one force option and remove the other:
+
+    - Use `force_with_lease: true` when pushing to a branch you have a local tracking ref for.
+      This is the safer option as it prevents overwriting commits you have not seen.
+    - Use `force: true` when overwriting tags, pushing cross-repo, or when you do not have a
+      local tracking ref for the remote.
+
+    ```yaml
+    # Option A — safer for branch pushes
+    - uses: ad-m/github-push-action@master
+      with:
+        force_with_lease: true
+
+    # Option B — required for tag updates and cross-repo pushes
+    - uses: ad-m/github-push-action@master
+      with:
+        force: true
+    ```
+  </Accordion>
+
+  <Accordion title="Push to protected branch fails">
+    **Problem**
+
+    The push is rejected because the target branch has branch protection rules enabled.
+    The error from Git typically looks like:
+
+    ```text
+    remote: error: GH006: Protected branch update failed for refs/heads/main.
+    error: failed to push some refs to 'https://github.com/...'
+    ```
+
+    **Cause**
+
+    The built-in `GITHUB_TOKEN` cannot bypass branch protection rules. GitHub intentionally
+    restricts the automatic token to prevent workflows from silently modifying protected
+    branches.
+
+    **Fix**
+
+    Use a Personal Access Token (PAT) or a GitHub App token that has been granted permission
+    to bypass branch protection:
+
+    <Steps>
+      <Step title="Create a PAT or GitHub App token">
+        Generate a PAT with `repo` scope (classic) or a fine-grained token with **Contents: Read and write** for the target repository. Store it as a repository secret (for example, `PAT_TOKEN`).
+
+        Alternatively, use a GitHub App and generate an installation token with the
+        [tibdex/github-app-token](https://github.com/tibdex/github-app-token) action.
+      </Step>
+      <Step title="Pass the token to both checkout and push">
+        To ensure the remote URL is set with the correct credentials, pass the same token to
+        `actions/checkout` via the `token` input and to the push action via `github_token`:
+
+        ```yaml
+        - uses: actions/checkout@v4
+          with:
+            ref: ${{ github.head_ref }}
+            fetch-depth: 0
+            token: ${{ secrets.PAT_TOKEN }}
+
+        - uses: ad-m/github-push-action@master
+          with:
+            github_token: ${{ secrets.PAT_TOKEN }}
+        ```
+      </Step>
+      <Step title="Configure branch protection to allow the token">
+        In your repository's **Settings → Branches → Branch protection rules**, add the PAT
+        owner or the GitHub App to the list of actors that can bypass required pull request
+        reviews or status checks, if your rules require it.
+      </Step>
+    </Steps>
+
+    <Tip>
+      GitHub App tokens are preferred over PATs for team environments because they are not
+      tied to an individual user account and can be scoped precisely to the repositories and
+      permissions they need.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="force_with_lease not available for cross-repo pushes">
+    **Problem**
+
+    You are pushing to a different repository (via the `repository` input) and using
+    `force_with_lease: true`. The push either fails or behaves unexpectedly.
+
+    **Cause**
+
+    `--force-with-lease` requires a local tracking ref that reflects the current state of the
+    remote branch. When you push to a repository other than the one you checked out, Git has
+    no tracking ref for the target remote's branches, so the lease check cannot be performed
+    reliably.
+
+    The README explicitly notes: _"Be aware that the force-with-lease flag is in such a case
+    not possible."_
+
+    **Fix**
+
+    Use `force: true` instead of `force_with_lease: true` for cross-repo pushes:
+
+    ```yaml
+    - uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.PAT_TOKEN }}
+        repository: my-org/other-repo
+        force: true
+    ```
+
+    <Warning>
+      Because `force: true` overwrites the remote branch unconditionally, make sure you have
+      full control over the target repository and branch before using this option.
+    </Warning>
+  </Accordion>
+
+</AccordionGroup>
